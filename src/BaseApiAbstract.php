@@ -4,391 +4,512 @@ namespace Smartling;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\ClientInterface;
+use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Message\RequestInterface;
+use GuzzleHttp\Message\ResponseInterface;
+use GuzzleHttp\Utils;
 use Psr\Log\LoggerInterface;
+use RuntimeException;
 use Smartling\AuthApi\AuthApiInterface;
 use Smartling\Exceptions\SmartlingApiException;
-use Smartling\Helpers\HttpVerbHelper;
 use Smartling\Logger\DevNullLogger;
+use Smartling\Parameters\BaseParameters;
 
 /**
  * Class BaseApiAbstract
  *
  * @package Smartling\Api
  */
-abstract class BaseApiAbstract {
+abstract class BaseApiAbstract
+{
+    const CLIENT_LIB_ID_SDK = 'smartling-api-sdk-php';
 
-	const STRATEGY_GENERAL = 'general';
+    const CLIENT_LIB_ID_VERSION = '2.0.0';
 
-	const STRATEGY_DOWNLOAD = 'download';
+    const HTTP_METHOD_GET = 'get';
 
-	const STRATEGY_AUTH = 'auth';
+    const HTTP_METHOD_POST = 'post';
 
+    const HTTP_METHOD_DELETE = 'delete';
 
-	/**
-	 * Project Id in Smartling dashboard
-	 *
-	 * @var string
-	 */
-	private $projectId;
+    const HTTP_METHOD_PUT = 'put';
 
-	/**
-	 * Smartling API base url.
-	 *
-	 * @var string
-	 */
-	private $baseUrl;
+    private static $currentClientId = self::CLIENT_LIB_ID_SDK;
 
-	/**
-	 * @var AuthApiInterface
-	 */
-	private $auth;
+    private static $currentClientVersion = self::CLIENT_LIB_ID_VERSION;
 
-	/**
-	 * Http Client abstraction.
-	 *
-	 * @var ClientInterface
-	 */
-	private $httpClient;
+    /**
+     * @return string
+     */
+    public static function getCurrentClientId()
+    {
+        return self::$currentClientId;
+    }
 
-	/**
-	 * Logger.
-	 *
-	 * @var LoggerInterface
-	 */
-	private $logger;
+    /**
+     * @param string $currentClientId
+     */
+    public static function setCurrentClientId($currentClientId)
+    {
+        self::$currentClientId = $currentClientId;
+    }
 
-	/**
-	 * @return string
-	 */
-	protected function getProjectId () {
-		return $this->projectId;
-	}
+    /**
+     * @return string
+     */
+    public static function getCurrentClientVersion()
+    {
+        return self::$currentClientVersion;
+    }
 
-	/**
-	 * @param string $projectId
-	 */
-	protected function setProjectId ( $projectId ) {
-		$this->projectId = $projectId;
-	}
+    /**
+     * @param string $currentClientVersion
+     */
+    public static function setCurrentClientVersion($currentClientVersion)
+    {
+        self::$currentClientVersion = $currentClientVersion;
+    }
 
-	/**
-	 * @return string
-	 */
-	protected function getBaseUrl () {
-		return $this->baseUrl;
-	}
+    /**
+     * PHP equivalent to 'YYYY-MM-DDThh:mm:ssZ'
+     */
+    const PATTERN_DATE_TIME_ISO_8601 = 'Y-m-d\TH:i:s\Z';
+    /**
+     * Project Id in Smartling dashboard
+     *
+     * @var string
+     */
+    private $projectId;
 
-	/**
-	 * @param string $baseUrl
-	 */
-	protected function setBaseUrl ( $baseUrl ) {
-		$this->baseUrl = $baseUrl;
-	}
+    /**
+     * Smartling API base url.
+     *
+     * @var string
+     */
+    private $baseUrl;
 
-	/**
-	 * @return AuthApiInterface
-	 */
-	protected function getAuth () {
-		return $this->auth;
-	}
+    /**
+     * @var AuthApiInterface
+     */
+    private $auth;
 
-	/**
-	 * @param AuthApiInterface $auth
-	 */
-	protected function setAuth ( AuthApiInterface $auth ) {
-		$this->auth = $auth;
-	}
+    /**
+     * Http Client abstraction.
+     *
+     * @var ClientInterface
+     */
+    private $httpClient;
 
-	/**
-	 * @return ClientInterface
-	 */
-	protected function getHttpClient () {
-		return $this->httpClient;
-	}
+    /**
+     * Logger.
+     *
+     * @var LoggerInterface
+     */
+    private $logger;
 
-	/**
-	 * @param ClientInterface $httpClient
-	 */
-	protected function setHttpClient ( $httpClient ) {
-		$this->httpClient = $httpClient;
-	}
+    /**
+     * @return string
+     */
+    protected function getProjectId()
+    {
+        return $this->projectId;
+    }
 
-	/**
-	 * @return LoggerInterface
-	 */
-	protected function getLogger () {
-		return $this->logger;
-	}
+    /**
+     * @param string $projectId
+     */
+    protected function setProjectId($projectId)
+    {
+        $this->projectId = $projectId;
+    }
 
-	/**
-	 * @param LoggerInterface $logger
-	 */
-	protected function setLogger ( $logger ) {
-		$this->logger = $logger;
-	}
+    /**
+     * @return string
+     */
+    protected function getBaseUrl()
+    {
+        return $this->baseUrl;
+    }
 
+    /**
+     * @param string $baseUrl
+     */
+    protected function setBaseUrl($baseUrl)
+    {
+        $this->baseUrl = $baseUrl;
+    }
 
-	/**
-	 * BaseApiAbstract constructor.
-	 *
-	 * @param string          $projectId
-	 * @param ClientInterface $client
-	 * @param LoggerInterface $logger
-	 * @param string|null     $service_url
-	 */
-	public function __construct ( $projectId, ClientInterface $client, $logger = null, $service_url = null ) {
-		$this->setProjectId( $projectId );
-		$this->setHttpClient( $client );
+    /**
+     * @return AuthApiInterface
+     */
+    protected function getAuth()
+    {
+        return $this->auth;
+    }
 
-		if ( is_null( $logger ) ) {
-			$logger = new DevNullLogger();
-		}
+    /**
+     * @param AuthApiInterface $auth
+     */
+    protected function setAuth(AuthApiInterface $auth)
+    {
+        $this->auth = $auth;
+    }
 
-		$this->setLogger( $logger );
+    /**
+     * @return ClientInterface
+     */
+    protected function getHttpClient()
+    {
+        return $this->httpClient;
+    }
 
-		$this->setBaseUrl( rtrim( $service_url, '/' ) . '/' . $projectId );
-	}
+    /**
+     * @param ClientInterface $httpClient
+     */
+    protected function setHttpClient($httpClient)
+    {
+        $this->httpClient = $httpClient;
+    }
 
-	/**
-	 * @param string $serviceUrl
-	 * @param bool   $debug
-	 *
-	 * @return Client
-	 */
-	protected static function initializeHttpClient ( $serviceUrl, $debug = false ) {
-		$client = new Client(
-			[
-				'base_uri' => $serviceUrl,
-				'debug'    => $debug,
-			]
-		);
+    /**
+     * @return LoggerInterface
+     */
+    protected function getLogger()
+    {
+        return $this->logger;
+    }
 
-		return $client;
-	}
-
-	/**
-	 * OOP wrapper for fopen() function.
-	 *
-	 * @param string $realPath
-	 *   Real path for file.
-	 *
-	 * @return resource
-	 *
-	 * @throws \Smartling\Exceptions\SmartlingApiException
-	 */
-	protected function readFile ( $realPath ) {
-		$stream = @fopen( $realPath, 'r' );
-
-		if ( ! $stream ) {
-			throw new SmartlingApiException( "File $realPath was not able to be read." );
-		} else {
-			return $stream;
-		}
-	}
-
-	/**
-	 * @param string $strategy
-	 * @param bool   $httpErrors
-	 *
-	 * @return array
-	 */
-	private function prepareOptions ( $strategy, $httpErrors = false ) {
-		$options = [
-			'headers'     => [
-				'Accept' => 'application/json',
-			],
-			'http_errors' => $httpErrors,
-		];
-
-		if ( self::STRATEGY_AUTH !== $strategy ) {
-			$accessToken                         = $this->getAuth()->getAccessToken();
-			$tokenType                           = $this->getAuth()->getTokenType();
-			$options['headers']['Authorization'] =
-				vsprintf( ' %s %s', [ $tokenType, $accessToken ] );
-		}
-
-		if ( self::STRATEGY_DOWNLOAD === $strategy ) {
-			unset( $options['headers']['Accept'] );
-		}
-
-		return $options;
-	}
-
-	/**
-	 * @param array $options
-	 * @param array $requestData
-	 *
-	 * @return array
-	 */
-	private function addRequestDataToOptions ( array $options, array $requestData = [ ] ) {
-
-		foreach ( $requestData as $key => $value ) {
-			// Hack to cast FALSE to '0' instead of empty string.
-			if ( is_bool( $value ) ) {
-				$value = (int) $value;
-			}
-
-			if ( is_array( $value ) ) {
-				foreach ( $value as $_item ) {
-					$options['multipart'][] = [
-						'name'     => $key . '[]',
-						'contents' => (string) $_item,
-					];
-				}
-			} else {
-				$options['multipart'][] = [
-					'name'     => $key,
-					'contents' => (string) $value,
-				];
-			}
-		}
-
-		return $options;
-	}
-
-	/**
-	 * @param string $uri
-	 *
-	 * @return string
-	 */
-	private function normalizeUri ( $uri = '' ) {
-		$endpoint = rtrim( $this->getBaseUrl(), '/' ) . '/' . ltrim( $uri, '/' );
-
-		return $endpoint;
-	}
-
-	/**
-	 * @param int $responseStatusCode
-	 */
-	private function checkAuthenticationError ( $responseStatusCode ) {
-		//Special handling for 401 error - authentication error => expire token
-		if ( 401 === (int) $responseStatusCode ) {
-			$this->getAuth()->resetToken();
-		}
-	}
-
-	/**
-	 * @param string $responseStatusCode
-	 * @param string $responseBody
-	 *
-	 * @throws SmartlingApiException
-	 */
-	private function processErrors ( $responseStatusCode, $responseBody ) {
-		// Catch all errors from Smartling and throw appropriate exception.
-		if ( $responseStatusCode >= 400 ) {
-			$errorResponse = json_decode( $responseBody, true );
-
-			if ( ! $errorResponse
-			     || ! is_array( $errorResponse )
-			     || ! array_key_exists( 'response', $errorResponse )
-			     || ! is_array( $errorResponse['response'] )
-			     || ! array_key_exists( 'errors', $errorResponse['response'] )
-			     || empty( $errorResponse['response']['errors'] )
-			) {
-				$message = 'Bad response format from Smartling';
-				$this->getLogger()->error( $message );
-				throw new SmartlingApiException( $message );
-			}
-
-			$error_msg = array_map(
-				function ( $a ) {
-					return $a['message'];
-				},
-				$errorResponse['response']['errors']
-			);
-
-			$message = implode( ' || ', $error_msg );
-
-			$this->getLogger()->error( $message );
-			throw new SmartlingApiException( $message, $responseStatusCode );
-		}
-	}
+    /**
+     * @param LoggerInterface $logger
+     */
+    protected function setLogger($logger)
+    {
+        $this->logger = $logger;
+    }
 
 
-	/**
-	 * @param string $uri
-	 * @param array  $requestData
-	 * @param string $method
-	 * @param string $strategy
-	 *
-	 * @return  bool true on SUCCESS and empty data
-	 *          string on $processResponseBody = false
-	 *          array otherwise
-	 * @throws SmartlingApiException
-	 */
-	protected function sendRequest ( $uri, array $requestData, $method, $strategy = self::STRATEGY_GENERAL ) {
+    /**
+     * BaseApiAbstract constructor.
+     *
+     * @param string $projectId
+     * @param ClientInterface $client
+     * @param LoggerInterface $logger
+     * @param string|null $service_url
+     */
+    public function __construct($projectId, ClientInterface $client, $logger = null, $service_url = null)
+    {
+        $this->setProjectId($projectId);
+        $this->setHttpClient($client);
 
-		$options = $this->prepareOptions( $strategy );
+        if (is_null($logger)) {
+            $logger = new DevNullLogger();
+        }
 
-		if ( in_array( $method, [ HttpVerbHelper::HTTP_VERB_GET, HttpVerbHelper::HTTP_VERB_DELETE ] ) ) {
-			$options['query'] = $requestData;
-		} else {
-			if ( self::STRATEGY_AUTH === $strategy ) {
-				$options['json'] = $requestData;
-			} else {
-				$options['multipart'] = [ ];
+        $this->setLogger($logger);
 
-				// Remove file from params array and add it as a stream.
-				if ( ! empty( $requestData['file'] ) ) {
-					$options['multipart'][] = [
-						'name'     => 'file',
-						'contents' => $this->readFile( $requestData['file'] ),
-					];
-					unset( $requestData['file'] );
-				}
-				$options = $this->addRequestDataToOptions( $options, $requestData );
-			}
-		}
+        $this->setBaseUrl(rtrim($service_url, '/') . '/' . $projectId);
+    }
 
-		$endpoint = $this->normalizeUri( $uri );
+    /**
+     * @param string $serviceUrl
+     * @param bool $debug
+     *
+     * @return Client
+     */
+    protected static function initializeHttpClient($serviceUrl, $debug = false)
+    {
+        $client = new Client(
+            [
+                'base_uri' => $serviceUrl,
+                'debug' => $debug,
+                'defaults' => [
+                    'headers' => [
+                        'User-Agent' => vsprintf(
+                            '%s/%s %s',
+                            [
+                                self::getCurrentClientId(),
+                                self::getCurrentClientVersion(),
+                                Utils::getDefaultUserAgent()
+                            ]
+                        ),
+                    ],
+                ]
+            ]
+        );
 
-		$guzzleResponse = $this->getHttpClient()->request( $method, $endpoint, $options );
+        return $client;
+    }
 
-		$this->getLogger()->debug(
-			json_encode(
-				[
-					'request'  => [
-						'endpoint'    => $endpoint,
-						'method'      => $method,
-						'requestData' => $options,
-					],
-					'response' => [
-						'statusCode' => $guzzleResponse->getStatusCode(),
-						'headers'    => $guzzleResponse->getHeaders(),
-						'body'       => (string) $guzzleResponse->getBody(),
-					],
-				],
-				JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT
-			)
-		);
+    /**
+     * OOP wrapper for fopen() function.
+     *
+     * @param string $realPath
+     *   Real path for file.
+     *
+     * @return resource
+     *
+     * @throws \Smartling\Exceptions\SmartlingApiException
+     */
+    protected function readFile($realPath)
+    {
+        $stream = @fopen($realPath, 'r');
 
-		$responseBody       = (string) $guzzleResponse->getBody();
-		$responseStatusCode = $guzzleResponse->getStatusCode();
+        if (!$stream) {
+            throw new SmartlingApiException("File $realPath was not able to be read.");
+        } else {
+            return $stream;
+        }
+    }
 
-		if ( 400 <= $responseStatusCode ) {
-			$this->checkAuthenticationError( $responseStatusCode );
-			$this->processErrors( $responseStatusCode, $responseBody );
-		}
+    protected function getDefaultRequestData($parametersType, $parameters, $auth = true, $httpErrors = false) {
+        $options = [
+            'headers' => [
+                'Accept' => 'application/json',
+            ],
+            'exceptions' => $httpErrors,
 
-		if ( self::STRATEGY_DOWNLOAD === $strategy ) {
-			return $responseBody;
-		} else {
-			$response = json_decode( $responseBody, true );
+        ];
 
-			// Throw exception if json is not valid.
-			if ( ! $response
-			     || ! is_array( $response )
-			     || ! array_key_exists( 'response', $response )
-			     || ! is_array( $response['response'] )
-			     || empty( $response['response']['code'] )
-			     || $response['response']['code'] !== 'SUCCESS'
-			) {
-				$message = 'Bad response format from Smartling';
-				$this->getLogger()->error( $message );
-				throw new SmartlingApiException( $message );
-			}
+        if ($auth) {
+            $accessToken = $this->getAuth()->getAccessToken();
+            $tokenType = $this->getAuth()->getTokenType();
 
-			return isset( $response['response']['data'] ) ? $response['response']['data'] : true;
-		}
-	}
+            $options['headers']['Authorization'] = vsprintf('%s %s', [
+                $tokenType,
+                $accessToken,
+            ]);
+        }
+
+        $options[$parametersType] = $parameters;
+
+        return $options;
+    }
+
+    /**
+     * @param mixed $requestData
+     *
+     * @return array
+     */
+    protected function processBodyOptions($requestData = [])
+    {
+        $opts = [];
+        foreach ($requestData as $key => $value) {
+            // Hack to cast FALSE to '0' instead of empty string.
+            if (is_bool($value)) {
+                $value = (int)$value;
+            }
+            $opts[$key] = $value;
+        }
+        return $opts;
+    }
+
+    /**
+     * @param string $uri
+     *
+     * @return string
+     */
+    private function normalizeUri($uri = '')
+    {
+        return rtrim($this->getBaseUrl(), '/') . '/' . ltrim($uri, '/');
+    }
+
+    /**
+     * @param ResponseInterface $response
+     * @throws SmartlingApiException
+     */
+    private function checkAuthenticationError(ResponseInterface $response)
+    {
+        //Special handling for 401 error - authentication error => expire token
+        if (401 === (int)$response->getStatusCode()) {
+            if (!($this->getAuth() instanceof AuthApiInterface)) {
+                $type = gettype($this->getAuth());
+                if ('object' === $type) {
+                    $type .= '::' . get_class($this->getAuth());
+                }
+                throw new SmartlingApiException('AuthProvider expected to be instance of AuthApiInterface, type given:' . $type,
+                    401);
+            } else {
+                $this->getAuth()->resetToken();
+            }
+        }
+    }
+
+    /**
+     * @param ResponseInterface $response
+     * @throws SmartlingApiException
+     */
+    private function processErrors(ResponseInterface $response)
+    {
+        // Catch all errors from Smartling and throw appropriate exception.
+        if (400 <= (int)$response->getStatusCode()) {
+            $this->processError($response);
+        }
+    }
+
+    /**
+     * @param ResponseInterface $response
+     * @throws SmartlingApiException
+     */
+    private function processError($response)
+    {
+        try {
+            $json = $response->json();
+
+            if (is_null($json)
+                || !array_key_exists('response', $json)
+                || !is_array($json['response'])
+                || !array_key_exists('errors', $json['response'])
+                || empty($json['response']['errors'])
+            ) {
+                $message = 'Bad response format from Smartling';
+                $this->getLogger()->error($message);
+                throw new SmartlingApiException($message);
+            }
+
+            $error_msg = array_map(
+                function ($a) {
+                    return $a['message'];
+                },
+                $json['response']['errors']
+            );
+
+            $message = implode(' || ', $error_msg);
+
+            $this->getLogger()->error($message);
+            throw new SmartlingApiException($json['response']['errors'], $response->getStatusCode());
+
+        } catch (RuntimeException $e) {
+            $message = vsprintf('Bad response format from Smartling: %s', [$response->getBody()]);
+            $this->getLogger()->error($message);
+            throw new SmartlingApiException($message, 0, $e);
+        }
+    }
+
+    /**
+     * @param string $uri
+     * @param array $options
+     * @param string $method
+     * @return RequestInterface
+     */
+    protected function prepareHttpRequest($uri, array $options, $method)
+    {
+        if (!empty($options['body'])) {
+            $options['body'] = $this->processBodyOptions($options['body']);
+        }
+
+        $endpoint = $this->normalizeUri($uri);
+        $clientRequest = $this->getHttpClient()->createRequest($method, $endpoint, $options);
+
+        // Dump full request data to log except sensitive data.
+        $logRequestData = $options;
+        if (isset($logRequestData['headers']['Authorization'])) {
+            $logRequestData['headers']['Authorization'] = substr($logRequestData['headers']['Authorization'], 0,
+                    12) . '*****';
+        }
+        if (isset($logRequestData['json']) &&
+            is_array($logRequestData['json']) &&
+            isset($logRequestData['json']['userIdentifier'])
+        ) {
+            $logRequestData['json']['userIdentifier'] = substr($logRequestData['json']['userIdentifier'], 0,
+                    5) . '*****';
+            $logRequestData['json']['userSecret'] = substr($logRequestData['json']['userSecret'], 0, 5) . '*****';
+        }
+
+        $toLog = [
+            'request' => [
+                'endpoint' => $endpoint,
+                'method' => $method,
+                'requestData' => $logRequestData,
+            ],
+        ];
+
+        $serialized = var_export($toLog, true);
+
+        $this->getLogger()->debug($serialized);
+
+        return $clientRequest;
+    }
+
+    /**
+     * @param RequestInterface $request
+     * @param bool $returnRawResponseBody
+     *
+     * @return  mixed.
+     *          true on SUCCESS and empty data
+     *          string on $returnRawResponseBody = true
+     *          array otherwise
+     * @throws SmartlingApiException
+     */
+    protected function sendRequest(RequestInterface $request, $returnRawResponseBody = false)
+    {
+        try {
+            $response = $this->getHttpClient()->send($request);
+
+            if (401 === (int) $response->getStatusCode()) {
+                $this->getLogger()->notice('Got unexpected 401 response code, trying to reauth carefully...');
+                $this->getAuth()->resetToken();
+                $response = $this->getHttpClient()->send($request);
+            }
+        } catch (RequestException $e) {
+            $message = vsprintf('Guzzle:RequestException: %s', [$e->getMessage(),]);
+            $this->getLogger()->error($message);
+            throw new SmartlingApiException($message, 0, $e);
+        } catch (\LogicException $e) {
+            $message = vsprintf('Guzzle:LogicException: %s', [$e->getMessage()]);
+            $this->getLogger()->error($message);
+            throw new SmartlingApiException($message, 0, $e);
+        } catch (\Exception $e) {
+            $message = vsprintf('Guzzle:Exception: %s', [$e->getMessage()]);
+            $this->getLogger()->error($message);
+            throw new SmartlingApiException($message, 0, $e);
+        }
+
+        // Dump full response to log except sensitive data.
+        $logResponseData = (string)$response->getBody();
+        $logResponseData = preg_replace('/(accessToken":".{5})([^"]+)/', '${1}*****', $logResponseData);
+        $logResponseData = preg_replace('/(refreshToken":".{5})([^"]+)/', '${1}*****', $logResponseData);
+        $this->getLogger()->debug(
+            json_encode(
+                [
+                    'response' => [
+                        'statusCode' => $response->getStatusCode(),
+                        'headers' => $response->getHeaders(),
+                        'body' => $logResponseData,
+                    ],
+                ],
+                JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT
+            )
+        );
+
+        if (400 <= (int)$response->getStatusCode()) {
+            $this->checkAuthenticationError($response);
+            $this->processErrors($response);
+        }
+
+        if ($returnRawResponseBody) {
+            return $response->getBody();
+        }
+        else {
+            try {
+                $json = $response->json();
+
+                if (!array_key_exists('response', $json)
+                    || !is_array($json['response'])
+                    || empty($json['response']['code'])
+                    || !in_array($json['response']['code'], [
+                        'SUCCESS',
+                        'ACCEPTED',
+                    ])
+                ) {
+                    $this->processError($response);
+                }
+
+                return !empty($json['response']['data']) ? $json['response']['data'] : true;
+
+            } catch (RuntimeException $e) {
+                $this->processError($response);
+            }
+        }
+    }
+
 }
